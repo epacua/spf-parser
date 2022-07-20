@@ -25,9 +25,9 @@ get_domains(){
 			[[ ${DIG[i]} =~ "ptr:" ]] && PTR+=( ${DIG[i]##ptr:} )
 			[[ ${DIG[i]} =~ "redirect=" ]] && redirect+=( ${DIG[i]##redirect=} ) && REDIRECT+=( ${DIG[i]##redirect=} )
 			[[ ${DIG[i]} =~ "a" ]] && IPS+=( $(dig +short -tA $PRIMARY_DOMAIN) )
-			[[ ${DIG[i]} =~ "mx" ]] && domain+=( $(dig +short -tMX $PRIMARY_DOMAIN) )
+			[[ ${DIG[i]} =~ "mx" ]] && domain+=( $(dig +short -tMX $PRIMARY_DOMAIN | awk '{print $2}') )
 			[[ ${DIG[i]} =~ "a:" ]] && IPS+=( $(dig +short -tA $i) )
-			[[ ${DIG[i]} =~ "mx:" ]] && domain+=( $(dig +short -tMX $i) )
+			[[ ${DIG[i]} =~ "mx:" ]] && domain+=( $(dig +short -tMX $i | awk '{print $2}') )
 			[[ ${DIG[i]} =~ "ip4:" ]] && IPS+=( ${DIG[i]##ip4:} )
 		}
 	else
