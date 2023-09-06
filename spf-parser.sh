@@ -43,7 +43,7 @@ get_domains(){
   DOMAINS+=( $(echo ${domain[@]}) )
   IPS+=( $(echo ${ip[@]}) )
   get_domains ${domain[@]} ${redirect[@]}
-  unset DIG domain redirect
+  unset i DIG domain redirect
 }
 
 build_report() {
@@ -64,7 +64,7 @@ build_report() {
   fi
 
   if [[ ${#PTR[@]} -gt 0 ]]; then
-    echo -e "\nTOTAL 'ptr' mechanism: ${#PTR[@]} -- ${PTR[@]}\n\tAny domains that ends with these are allowed to send."
+    echo -e "\nTOTAL 'ptr' mechanism: ${#PTR[@]} -- ${PTR[@]}\n\t(Allowed to send from these domains.)"
     echo "-------------------------------------------------------------------------------------------------"
   fi
 
@@ -73,15 +73,15 @@ build_report() {
 
   # Iterate through all IP addresses
   for ((i=0; i<${#IPS[@]};)) {
-    # Displays IP addresses in 5 columns
-    for ((x=0; x<4; x++)) {
+    # Formatting helper
+    for ((x=0; x<1; x++)) {
       printf "%-1s %-18s %-18s %-18s %-18s %-18s%+1s\n" "|" "${IPS[$((i++))]}" "${IPS[$((i++))]}" "${IPS[$((i++))]}" "${IPS[$((i++))]}" "${IPS[$((i++))]}" "|"
     }
   }
   echo "+===============================================================================================+"
 
-  echo -e "Thank you for using this program!\n"
+  echo -e "\nThank you for using this program!\n"
 }
 
-get_domains $@
+get_domains "$@"
 build_report
