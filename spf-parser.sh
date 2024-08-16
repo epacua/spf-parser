@@ -29,8 +29,8 @@ include_mechanism=()
 spf_txtrr=$(dig +noall +short -tTXT $1 | grep 'v=spf')
 
 get_domains() {
-  dig_output=($(dig +noall +short -tTXT -f <(echo $@) | grep 'v=spf' | grep -oi \
-    '\<\(\(a\|mx\)\|\(\(redirect=\|\(\(a\|mx\|include\|ptr\):\)\)[[:alnum:]._-]\+\)\|ip4:[[:digit:]]\{1,3\}\.[[:digit:]]\{1,3\}\.[[:digit:]]\{1,3\}\.[[:digit:]]\{1,3\}\(/[0-9]\{1,2\}\)\?\)\|ip6:[[:xdigit:]:]\{1,16\}\(/[[:digit:]]\{1,3\}\)\>'))
+  dig_output=($(dig +noall +short -tTXT -f <(echo $@) | grep 'v=spf' |
+    grep -oi '\<\(\(a\|mx\)\|\(\(redirect=\|\(\(a\|mx\|include\|ptr\):\)\)[[:alnum:]._-]\+\)\|ip4:[[:digit:]]\{1,3\}\.[[:digit:]]\{1,3\}\.[[:digit:]]\{1,3\}\.[[:digit:]]\{1,3\}\(/[0-9]\{1,2\}\)\?\)\|ip6:[[:xdigit:]:]\{1,16\}\(/[[:digit:]]\{1,3\}\)\>'))
 
   local domain=()
   local redirect=()
