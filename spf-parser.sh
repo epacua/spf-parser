@@ -9,82 +9,102 @@ set -o pipefail
 #
 
 if [[ $# -ne 1 ]]; then
-	echo "[ERROR] Please provide a domain name to check."
-	exit 1
+  echo "[ERROR] Please provide a domain name to check."
+  exit 1
 fi
 
-if [[ ! $(which dig) ]]; then
-	echo "[ERROR] The dns tool 'dig' is not found. Please install it then re-run"
-	exit
+if ! $(which dig); then
+  echo "[ERROR] The dns tool 'dig' is not found. Please install it then re-run"
+  exit
 fi
 
-PRIMARY_DOMAIN=$1
-REDIRECT=()
-PTR=()
-SPF_DOMAINS=()
-IPS=()
-A=()
-INCLUDES=()
-SPF=$(dig +noall +short -tTXT $1 | grep 'v=spf')
+primary_domain=$1
+redirect=()
+ptr=()
+spf_domains=()
+total_domains=()
+ip4_list=($(dig +short -tA $primary_domain))
+ip6_list=($(dig +short -tAAAA $primary_domain))
+include_mechanism=()
+spf_txtrr=$(dig +noall +short -tTXT $1 | grep 'v=spf')
 
 get_domains() {
-	DIG=($(dig +noall +short -tTXT -f <(echo $@) | grep 'v=spf' | grep -oi '\<\(\(a\|mx\)\|\(\(redirect=\|\(\(a\|mx\|include\|ptr\):\)\)[[:alnum:]._-]\+\)\|ip4:[0-9.]\+\(/[0-9]\{1,2\}\)\?\)\>'))
-	local domain=()
-	local redirect=()
+  dig_output=($(dig +noall +short -tTXT -f <(echo $@) | grep 'v=spf' | grep -oi \
+    '\<\(\(a\|mx\)\|\(\(redirect=\|\(\(a\|mx\|include\|ptr\):\)\)[[:alnum:]._-]\+\)\|ip4:[[:digit:]]\{1,3\}\.[[:digit:]]\{1,3\}\.[[:digit:]]\{1,3\}\.[[:digit:]]\{1,3\}\(/[0-9]\{1,2\}\)\?\)\|ip6:[[:xdigit:]:]\{1,16\}\(/[[:digit:]]\{1,3\}\)\>'))
 
-	if [[ -n ${DIG[@]} ]]; then
-		for ((i = 0; i < ${#DIG[@]}; i++)); do
-			[[ ${DIG[i]} =~ "include:" ]] && domain+=(${DIG[i]##include:}) && INCLUDES+=(${DIG[i]##include:})
-			[[ ${DIG[i]} =~ "ptr:" ]] && PTR+=(${DIG[i]##ptr:})
-			[[ ${DIG[i]} =~ "redirect=" ]] && redirect+=(${DIG[i]##redirect=}) && REDIRECT+=(${DIG[i]##redirect=})
-			[[ ${DIG[i]} =~ "a" ]] && IPS+=($(dig +short -tA $PRIMARY_DOMAIN))
-			[[ ${DIG[i]} =~ "mx" ]] && domain+=($(dig +short -tMX $PRIMARY_DOMAIN | cut -d' ' -f2))
-			[[ ${DIG[i]} =~ "a:" ]] && IPS+=($(dig +short -tA $i))
-			[[ ${DIG[i]} =~ "mx:" ]] && domain+=($(dig +short -tMX $i | cut -d' ' -f2))
-			[[ ${DIG[i]} =~ "ip4:" ]] && IPS+=(${DIG[i]##ip4:})
-		done
-	else
-		return
-	fi
+  local domain=()
+  local redirect=()
 
-	SPF_DOMAINS+=($(echo ${domain[@]}))
-	IPS+=($(echo ${ip[@]}))
-	get_domains ${domain[@]} ${redirect[@]}
-	unset i DIG domain redirect
+  if [[ -n ${dig_output[@]} ]]; then
+    for ((i = 0; i < ${#dig_output[@]}; i++)); do
+      [[ ${dig_output[i]} =~ "include:" ]] && domain+=(${dig_output[i]##include:}) && include_mechanism+=(${dig_output[i]##include:})
+      [[ ${dig_output[i]} =~ "ptr:" ]] && ptr+=(${dig_output[i]##ptr:})
+      [[ ${dig_output[i]} =~ "redirect=" ]] && redirect+=(${dig_output[i]##redirect=}) && redirect+=(${dig_output[i]##redirect=})
+      [[ ${dig_output[i]} =~ "mx" ]] && domain+=($(dig +short -tMX $primary_domain | cut -d' ' -f2))
+      [[ ${dig_output[i]} =~ "a:" ]] && ip4_list+=($(dig +short -tA $i))
+      [[ ${dig_output[i]} =~ "mx:" ]] && domain+=($(dig +short -tMX $i | cut -d' ' -f2))
+      [[ ${dig_output[i]} =~ "ip4:" ]] && ip4_list+=(${dig_output[i]##ip4:})
+      [[ ${dig_output[i]} =~ "ip6:" ]] && ip6_list+=(${dig_output[i]##ip6:})
+    done
+  else
+    return
+  fi
+
+  spf_domains+=($(echo ${domain[@]}))
+  ip4_list+=($(echo ${ip4_list[@]}))
+  get_domains ${domain[@]} ${redirect[@]}
+  unset i dig_output domain redirect
 }
 
 build_report() {
-	echo -e "\nSPF Domains: ${SPF_DOMAINS[@]}"
-	echo "-------------------------------------------------------------------------------------------------"
-	IPS+=($(echo $(dig +short -tA -f <(echo ${SPF_DOMAINS[@]}))))
-	echo -e "SPF Txt Record: $SPF"
-	echo "-------------------------------------------------------------------------------------------------"
+  if [[ ${#spf_domains[@]} -gt 0 ]]; then
+    cat <<EOF
+SPF Domains:
+    ${spf_domains[@]}
 
-	if [[ ${#INCLUDES[@]} -gt 0 ]]; then
-		echo -e "\nTOTAL 'include' mechanism: ${#INCLUDES[@]}\n\t${INCLUDES[@]}"
-		echo "-------------------------------------------------------------------------------------------------"
-	fi
+SPF_TXT Resource Record
+    $spf_txtrr
 
-	if [[ ${#REDIRECT[@]} -gt 0 ]]; then
-		echo -e "\nTOTAL 'redirect' mechanism: ${#REDIRECT[@]}\n\t${REDIRECT[@]}"
-		echo "-------------------------------------------------------------------------------------------------"
-	fi
+EOF
+  fi
 
-	if [[ ${#PTR[@]} -gt 0 ]]; then
-		echo -e "\nTOTAL 'ptr' mechanism: ${#PTR[@]} -- ${PTR[@]}\n\t(Allowed to send from these domains.)"
-		echo "-------------------------------------------------------------------------------------------------"
-	fi
+  if [[ ${#include_mechanism[@]} -gt 0 ]]; then
+    cat <<EOF
+TOTAL 'include' mechanism: ${#include_mechanism[@]}
+    ${include_mechanism[@]}
+EOF
+  fi
 
-	echo -e "\nTOTAL ALLOWED IPs: ${#IPS[@]}"
-	echo "+------------------------------------------------------------------------------------------------+"
+  if [[ ${#redirect[@]} -gt 0 ]]; then
+    cat <<EOF
+TOTAL 'redirect' mechanism: ${#redirect[@]}\n\t${redirect[@]}
+EOF
+  fi
 
-	# Iterate through all IP addresses
-	for ((i = 0; i < ${#IPS[@]}; )); do
-		printf "%-1s %-18s %-18s %-18s %-18s %-18s%+1s\n" "|" "${IPS[$((i++))]}" "${IPS[$((i++))]}" "${IPS[$((i++))]}" "${IPS[$((i++))]}" "${IPS[$((i++))]}" " |"
-	done
-	echo "+================================================================================================+"
+  if [[ ${#ptr[@]} -gt 0 ]]; then
+    cat <<EOF
+TOTAL 'ptr' mechanism: ${#ptr[@]} -- ${ptr[@]}
+EOF
+  fi
 
-	echo -e "\nThank you for using this program!"
+  echo -e "\nTOTAL ALLOWED IPv4 addresses: ${#ip4_list[@]}"
+  echo "+----------------------------------------------------------------------------------------------------+"
+  # Iterate through all IPv4 addresses
+  for ((i = 0; i < ${#ip4_list[@]}; )); do
+    printf "%-1s %-18s %-18s %-18s %-18s %-22s%1s\n" "|" "${ip4_list[$((i++))]}" "${ip4_list[$((i++))]}" "${ip4_list[$((i++))]}" "${ip4_list[$((i++))]}" "${ip4_list[$((i++))]}" " |"
+  done
+  echo "+====================================================================================================+"
+
+  echo -e "\nTOTAL ALLOWED IPv6 addresses: ${#ip6_list[@]}"
+  echo "+----------------------------------------------------------------------------------------------------+"
+
+  # Iterate through all IPv6 addresses
+  for ((i = 0; i < ${#ip6_list[@]}; )); do
+    printf "%s\n" "${ip6_list[$((i++))]}"
+  done
+  echo "+====================================================================================================+"
+
+  echo -e "\nThank you for using this program!"
 }
 
 get_domains "$@"
